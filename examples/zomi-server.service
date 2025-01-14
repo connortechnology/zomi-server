@@ -1,0 +1,38 @@
+## This is a systemd startup file if you are on a system that
+## supports systemd and you want ZoMi Server to work as an always
+## on service
+
+## To make this persistent
+# sudo cp mlapi.service /etc/systemd/system
+# sudo chmod 644 /etc/systemd/system/mlapi.service
+# sudo systemctl daemon-reload
+## Add --now to the enable command to also start the server
+# sudo systemctl enable mlapi.service --now
+
+## To start,
+# sudo systemctl start mlapi
+
+## CHANGE User and ExecStart (if needed) to match your system!
+[Unit]
+Description=ZoMi ML API service
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+# We need this to get logs correctly
+Environment=PYTHONUNBUFFERED=1
+# These 2 lines stop the console output being forwarded to syslog
+# You can enable syslog logging in client config if you want
+StandardOutput=null
+StandardError=null
+
+# Change to the user that the server was installed for
+User=root
+# Change config file path to match your system, if needed.
+ExecStart=/usr/local/bin/mlapi -C /opt/zomi/server/conf/server.yml
+
+[Install]
+WantedBy=multi-user.target

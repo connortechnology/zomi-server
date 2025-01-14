@@ -25,6 +25,7 @@ class OpenCVSubFrameWork(str, Enum):
     TORCH = "torch"
     VINO = "vino"
     ONNX = "onnx"
+    NETINT = "netint"
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.name}>"
@@ -60,6 +61,7 @@ class ModelFrameWork(str, Enum):
     FACE_RECOGNITION = "face_recognition"
     ORT = "ort"
     TRT = "trt"
+    NETINT = "netint"
 
 
 class ModelProcessor(str, Enum):
@@ -67,6 +69,7 @@ class ModelProcessor(str, Enum):
     CPU = "cpu"
     GPU = "gpu"
     TPU = "tpu"
+    QUADRA = "quadra"
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.name}>"
