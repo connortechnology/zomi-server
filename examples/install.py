@@ -402,6 +402,12 @@ def parse_cli():
         default=None,
         nargs=1,
     )
+    processor_group.add_argument(
+        "--tpu",
+        action="store_true",
+        dest="tpu",
+        help="Install TPU only packages for pytorch / onnx-runtime",
+    )
     parser.add_argument("--venv-only", action="store_true", help="Install venv only", dest="venv_only")
     parser.add_argument("-F", "--force", action="store_true", help="Force installation (overwrite existing files)", dest="force")
     parser.add_argument(
@@ -835,10 +841,7 @@ def copy_file(src: Path, dest: Path, user: str, group: str, mode: int):
                     f"The file {dest} already exists, would you like to remove it and create a new one? [Y/n] "
                 )
                 if x.casefold() == "n":
-                    logger.error(
-                        f"Please remove {dest} and try again."
-                    )
-                    sys.exit(1)
+                    return
                 dest.unlink()
             else:
                 if not force:
