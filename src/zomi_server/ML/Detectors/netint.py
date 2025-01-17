@@ -72,6 +72,14 @@ def percentages_to_coordinates(box, width, height):
     box[..., 3] *= height
     return box
 
+def remove_padding(box, padding_width_percent, padding_height_percent):
+    box[..., 0] += padding_width_percent
+    box[..., 1] += padding_height_percent
+    box[..., 2] += padding_width_percent
+    box[..., 3] += padding_height_percent
+    return box
+
+
 class NETINTDetector:
     _classes: Optional[List] = None
 
@@ -127,7 +135,7 @@ class NETINTDetector:
 
     def load_model(self):
         logger.debug(
-            f"{LP} loading model into {self.processor.upper()} processor memory: {self.name} ({self.config.id})"
+            f"{LP} loading model {self.config.input.as_posix()}into {self.processor.upper()} processor memory: {self.name} ({self.config.id})"
         )
         t = time.time()
         try:
@@ -154,62 +162,6 @@ class NETINTDetector:
         else:
             logger.debug(f"perf:{LP} loading took: {time.time() - t:.5f}s")
 
-    def nms(self, objects: List, threshold: float) -> List:
-        """Returns a list of objects passing the NMS filter.
-
-        Args:
-          objects: result candidates.
-          threshold: the threshold of overlapping IoU to merge the boxes.
-
-        Returns:
-          A list of objects that pass the NMS.
-        """
-        # TODO: Make class (label) aware and only filter out same class members?
-        timer = time.time()
-        if len(objects) == 1:
-            logger.debug(f"{LP} only 1 object, no NMS needed")
-        elif len(objects) > 1:
-            boxes = np.array([o.bbox for o in objects])
-            try:
-                xmins = boxes[:, 0]
-                ymins = boxes[:, 1]
-                xmaxs = boxes[:, 2]
-                ymaxs = boxes[:, 3]
-            except IndexError as e:
-                logger.error(f"{LP} {e}")
-                logger.debug(f"{LP} numpy.array NMS boxes: {boxes}")
-                raise IndexError
-            else:
-                areas = (xmaxs - xmins) * (ymaxs - ymins)
-                scores = [o.score for o in objects]
-                idxs = np.argsort(scores)
-
-                selected_idxs = []
-                while idxs.size != 0:
-                    selected_idx = idxs[-1]
-                    selected_idxs.append(selected_idx)
-
-                    overlapped_xmins = np.maximum(xmins[selected_idx], xmins[idxs[:-1]])
-                    overlapped_ymins = np.maximum(ymins[selected_idx], ymins[idxs[:-1]])
-                    overlapped_xmaxs = np.minimum(xmaxs[selected_idx], xmaxs[idxs[:-1]])
-                    overlapped_ymaxs = np.minimum(ymaxs[selected_idx], ymaxs[idxs[:-1]])
-
-                    w = np.maximum(0, overlapped_xmaxs - overlapped_xmins)
-                    h = np.maximum(0, overlapped_ymaxs - overlapped_ymins)
-
-                    intersections = w * h
-                    unions = areas[idxs[:-1]] + areas[selected_idx] - intersections
-                    ious = intersections / unions
-
-                    idxs = np.delete(
-                        idxs,
-                        np.concatenate(
-                            ([len(idxs) - 1], np.where(ious > threshold)[0])
-                        ),
-                    )
-            objects = [objects[i] for i in selected_idxs]
-            logger.info(f"perf:{LP} NMS took: {time.time() - timer:.5f}s")
-        return objects
 
     def square_image(self, frame: np.ndarray):
         """Zero pad the matrix to make the image squared"""
@@ -373,6 +325,9 @@ class NETINTDetector:
             logger.warning(f"{LP} model not loaded? loading now...")
             self.load_model()
 
+        if not self.model:
+            raise RuntimeError(f"{LP} can't load model")
+
         input_height, input_width = input_image.shape[:2]
         logger.debug(input_image.shape)
         t = time.time()
@@ -384,7 +339,13 @@ class NETINTDetector:
             f"{LP}detect: input image {input_width}*{input_height} - confidence: {conf_threshold}{nms_str}"
         )
         input_image = resize_cv2_image(input_image, self.config.width)
+        scaled_height, scaled_width = input_image.shape[:2];
         input_image = self.square_image(input_image)
+        padded_height, padded_width = input_image.shape[:2]
+        padding_width_percent = 1-(scaled_width / padded_width);
+        padding_height_percent = 1-(scaled_height / padded_height);
+        logger.debug(f"Padding percentages: {padding_width_percent} = {padded_width} / {scaled_width}, {padding_height_percent} = {padded_height} / {scaled_height}");
+
         detect_height, detect_width = input_image.shape[:2]
         x_factor = detect_width / input_width
         y_factor = detect_height / input_height
@@ -428,11 +389,19 @@ class NETINTDetector:
 
             boxes, classes, scores = self.post_process(input_data)
             logger.debug(boxes);
-            boxes = percentages_to_coordinates(boxes, detect_width, detect_height)
+            boxes = remove_padding(boxes, padding_width_percent, padding_height_percent)
+            logger.debug('after remove padding')
             logger.debug(boxes);
+            boxes = percentages_to_coordinates(boxes, scaled_width, scaled_height)
+
+            logger.debug('to coordinates');
+            logger.debug(boxes);
+            logger.debug('to xyxy');
             boxes = xywh2xyxy(boxes)
             logger.debug(boxes);
-            boxes = rescale_boxes(boxes, detect_width, detect_height, input_width, input_height)
+            boxes = rescale_boxes(boxes, scaled_width, scaled_height, input_width, input_height)
+            logger.debug('after rescale');
+            logger.debug(boxes);
 
         result = DetectionResults(
             success=True if classes.size else False,
